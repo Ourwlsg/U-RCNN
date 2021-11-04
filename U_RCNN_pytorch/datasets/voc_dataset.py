@@ -105,10 +105,11 @@ class BatchCollator:
 # dataset_train = VOCDataset(args.data_dir, "train2017", train=True)
 class VOCDataset(GeneralizedDataset):
     # download VOC 2012: http://host.robots.ox.ac.uk/pascal/VOC/voc2012/VOCtrainval_11-May-2012.tar
-    def __init__(self, data_dir, ids, train=False):
+    def __init__(self, data_dir, ids, transform, train=False):
         super().__init__(ids, max_workers=4, verbose=False)
         self.data_dir = data_dir
         self.train = train
+        self.transform = transform
 
         # # instances segmentation task
         # id_file = os.path.join(data_dir, "ImageSets/Segmentations/{}.txt".format(split))
@@ -140,17 +141,31 @@ class VOCDataset(GeneralizedDataset):
 
     def get_image(self, img_id):
         image = cv2.imread(os.path.join(self.data_dir, "JPEGImages/{}.jpg".format(img_id.strip())), cv2.IMREAD_COLOR)
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        img_RGB = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+
+        if self.transform is not None:
+            augmented = self.transform(image=img_RGB)
+            image = augmented["image"]
+
         image = transforms.ToTensor()(image)
         # return image.permute(1, 2, 0)
         return image
 
     def get_target(self, img_id):
-        mask = cv2.imread(os.path.join(self.data_dir, "Masks/{}.jpg".format(img_id.strip())), cv2.IMREAD_COLOR)
-        mask = cv2.cvtColor(mask, cv2.COLOR_BGR2RGB)
+        mask = cv2.imread(os.path.join(self.data_dir, "Masks/{}.jpg".format(img_id.strip())), cv2.IMREAD_GRAYSCALE)
+        # mask_RGB = cv2.cvtColor(mask, cv2.COLOR_BGR2RGB)
 
         # maskParser
         # mask = transforms.ToTensor()(mask).to(torch.uint8)
+
+        if self.transform is not None:
+            augmented = self.transform(image=mask)
+            mask = augmented["image"]
+
+        if mask.max() > 1:
+            mask = mask / 255.0
+        mask[mask >= 0.6] = 1
+        mask[mask < 0.6] = 0
         mask = transforms.ToTensor()(mask)
 
         # annoParser

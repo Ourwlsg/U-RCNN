@@ -1,5 +1,5 @@
 use_cuda: true
-gpu: "1"
+gpu: "0"
 dataset: "voc"
 data_dir: "/home/zhucc/stomata_index/U-RCNN/data"
 K_FOLD: 5
@@ -13,7 +13,8 @@ lr: 0.001
 momentum: 0.9
 weight_decay: 0.0001
 
+inputsize: 256
 batch_size: 2
 epochs: 1
 iters: -1 # help="max iters per epoch, -1 denotes auto"
-print_freq: 100 # help="frequency of printing losses"
+print_freq: 1 # help="frequency of printing losses"
