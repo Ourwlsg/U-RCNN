@@ -20,7 +20,7 @@ from .generalized_dataset import GeneralizedDataset
 #     "sheep", "sofa", "train", "tvmonitor"
 # )
 
-VOC_CLASSES = ("stomata",)
+VOC_CLASSES = ("__background__", "stomata",)
 
 
 # return image, target(image_id=img_id, boxes=boxes, labels=labels, masks=mask)
@@ -43,13 +43,18 @@ class BatchCollator:
         if max_num_bboxes > 0:
             for idx, bbox in enumerate(bboxes):
                 bbox_padded = torch.ones(max_num_bboxes, 4) * -1
+                if bbox.shape[0] == 0:
+                    targets[idx]['boxes'] = bbox_padded
+
                 if bbox.shape[0] > 0:
                     bbox_padded[:bbox.shape[0], 0:4] = torch.from_numpy(bbox)
                     targets[idx]['boxes'] = bbox_padded
 
             for idx, label in enumerate(labels):
+                label_padded = torch.ones(max_num_bboxes) * -1
+                if label.shape[0] == 0:
+                    targets[idx]['labels'] = label_padded
                 if label.shape[0] > 0:
-                    label_padded = torch.ones(max_num_bboxes) * -1
                     label_padded[:len(label)] = torch.from_numpy(label)
                     targets[idx]['labels'] = label_padded
         else:
@@ -139,57 +144,48 @@ class VOCDataset(GeneralizedDataset):
             ar = int(width) / int(height)
             self._aspect_ratios.append(ar)
 
-    def get_image(self, img_id):
+    def get_image_target(self, img_id):
         image = cv2.imread(os.path.join(self.data_dir, "JPEGImages/{}.jpg".format(img_id.strip())), cv2.IMREAD_COLOR)
         img_RGB = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
-        if self.transform is not None:
-            augmented = self.transform(image=img_RGB)
-            image = augmented["image"]
-
-        image = transforms.ToTensor()(image)
-        # return image.permute(1, 2, 0)
-        return image
-
-    def get_target(self, img_id):
         mask = cv2.imread(os.path.join(self.data_dir, "Masks/{}.jpg".format(img_id.strip())), cv2.IMREAD_GRAYSCALE)
-        # mask_RGB = cv2.cvtColor(mask, cv2.COLOR_BGR2RGB)
 
-        # maskParser
-        # mask = transforms.ToTensor()(mask).to(torch.uint8)
-
-        if self.transform is not None:
-            augmented = self.transform(image=mask)
-            mask = augmented["image"]
-
-        if mask.max() > 1:
-            mask = mask / 255.0
-        mask[mask >= 0.6] = 1
-        mask[mask < 0.6] = 0
-        mask = transforms.ToTensor()(mask)
-
-        # annoParser
         anno = ET.parse(os.path.join(self.data_dir, "Annotations", "{}.xml".format(img_id.strip())))
-        boxes = []
+
+        bboxes = []
         labels = []
         for obj in anno.findall("object"):
             bndbox = obj.find("bndbox")
             bbox = [int(bndbox.find(tag).text) for tag in ["xmin", "ymin", "xmax", "ymax"]]
             name = obj.find("name").text
             label = self.classes.index(name)
-
-            boxes.append(bbox)
+            bboxes.append(bbox)
             labels.append(label)
 
-        boxes = torch.tensor(boxes, dtype=torch.float32)
-        boxes = np.asarray(boxes)
+        if self.transform is not None:
+            augmented = self.transform(image=img_RGB, mask=mask, bboxes=bboxes, labels=labels)
+            image = augmented["image"]
+            mask = augmented["mask"]
+            bboxes = augmented["bboxes"]
+            labels = augmented["labels"]
+
+        image = transforms.ToTensor()(image)
+        img_id = torch.tensor([self.ids.index(img_id)])
+
+        if mask.max() > 1:
+            mask = mask / 255.0
+        mask[mask >= 0.6] = 1
+        mask[mask < 0.6] = 0
+        mask = transforms.ToTensor()(mask)
+        mask = mask.float()
+
+        bboxes = torch.tensor(bboxes, dtype=torch.float32)
+        bboxes = np.asarray(bboxes)
+
         labels = np.asarray(labels)
 
-        img_id = torch.tensor([self.ids.index(img_id)])
-        # mask = torch.from_numpy(mask).float().permute(2, 0, 1)
-        mask = mask.float()
-        target = dict(image_id=img_id, boxes=boxes, labels=labels, masks=mask)
-        return target
+        target = dict(image_id=img_id, boxes=bboxes, labels=labels, masks=mask)
+        return image, target
 
     @property
     def coco(self):

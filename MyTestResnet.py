@@ -9,7 +9,7 @@
 @Desc   ：
 ==================================================
 """
-import U_RCNN_pytorch.models.resnet50 as resnet
+import src.models.resnet50 as resnet
 import torch
 import torch.nn as nn
 import numpy as np

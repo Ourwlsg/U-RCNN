@@ -19,8 +19,8 @@ class GeneralizedDataset:
     # image=image, image_id=img_id, boxes=boxes, labels=labels, mask=mask
     def __getitem__(self, i):
         img_id = self.ids[i]
-        image = self.get_image(img_id)
-        target = self.get_target(img_id) if self.train else {}
+        image, target = self.get_image_target(img_id)
+        # target = self.get_target(img_id) if self.train else {}
         # return image, target['image_id'], target['boxes'], target['labels'], target['mask']
         return {'image': image, 'target': target}
 

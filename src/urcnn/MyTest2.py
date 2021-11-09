@@ -3,9 +3,9 @@ import torch.nn as nn
 import torchvision
 from torchvision.ops import misc
 
-from U_RCNN_pytorch.urcnn.backbone import UNetWithResnet50Encoder
-from U_RCNN_pytorch.urcnn.rpn import AnchorGenerator
-from U_RCNN_pytorch.urcnn.urcnn import URCNN
+from src.urcnn.backbone import UNetWithResnet50Encoder
+from src.urcnn.rpn import AnchorGenerator
+from src.urcnn.urcnn import URCNN
 
 
 class ResBackbone(nn.Module):
@@ -95,18 +95,19 @@ import time
 import torch
 import torchvision
 import yaml
+import numpy as np
 from easydict import EasyDict as edict
 from torch.utils.data import DataLoader
 from torchvision.ops import misc
 from PIL import Image
-from U_RCNN_pytorch import Meter
-import U_RCNN_pytorch as urp
-from U_RCNN_pytorch.datasets.voc_dataset import BatchCollator
+from src import Meter
+import src as urp
+from src.datasets.voc_dataset import BatchCollator
 from albumentations import (
     HorizontalFlip, VerticalFlip, IAAPerspective, CLAHE, RandomRotate90, ElasticTransform, RandomGamma,
     Transpose, ShiftScaleRotate, Blur, OpticalDistortion, GridDistortion, HueSaturationValue,
     IAAAdditiveGaussianNoise, GaussNoise, MotionBlur, MedianBlur, IAAPiecewiseAffine, RandomSizedCrop, PadIfNeeded,
-    IAASharpen, IAAEmboss, RandomBrightnessContrast, Flip, OneOf, Compose, ToGray, Resize, Normalize
+    IAASharpen, IAAEmboss, RandomBrightnessContrast, Flip, OneOf, Compose, ToGray, Resize, Normalize, BboxParams
 )
 
 
@@ -124,7 +125,7 @@ if __name__ == "__main__":
 
     os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu
     device = torch.device("cuda" if torch.cuda.is_available() and args.use_cuda else "cpu")
-    # device = torch.device("cpu")
+    device_ids = range(torch.cuda.device_count())
 
     # Albumentations
     train_Transform = Compose([
@@ -132,14 +133,14 @@ if __name__ == "__main__":
         # RandomRotate90(0.5),
         # Flip(p=0.5),
         # ShiftScaleRotate(p=0.2, interpolation=Image.NEAREST),  # , border_mode=cv2.BORDER_CONSTANT, value=0
-    ], p=1)
+    ], p=1, bbox_params=BboxParams(format='pascal_voc', label_fields=["labels"]))
 
     valid_Transform = Compose([
         # ToGray(p=1),
         Resize(height=args.inputsize, width=args.inputsize, interpolation=Image.NEAREST, p=1),
         # Normalize(mean=norm_mean, std=norm_std),
         # # ToTensorV2()
-    ], p=1)
+    ], p=1, bbox_params=BboxParams(format='pascal_voc', label_fields=["labels"]))
 
     # for fold in range(args.K_FOLD):
     for fold in range(1):
@@ -147,8 +148,8 @@ if __name__ == "__main__":
         dataset_train = urp.datasets("voc", data_dir=args.data_dir, ids=train_ids, transform=train_Transform,
                                      train=True)
 
-        train_loader = DataLoader(dataset_train, batch_size=2, shuffle=True, num_workers=0,
-                                  pin_memory=True, collate_fn=BatchCollator(train=dataset_train.train))
+        train_loader = DataLoader(dataset_train, batch_size=args.batch_size, shuffle=True, num_workers=0,
+                                  pin_memory=True, collate_fn=BatchCollator(train=dataset_train.train), drop_last=True)
 
         # model = urp.URCNN_resnet50(pretrained=True, num_classes=2).to(device)
 
@@ -168,9 +169,12 @@ if __name__ == "__main__":
         roi_pooler = torchvision.ops.MultiScaleRoIAlign(featmap_names=['0'], output_size=7, sampling_ratio=2)
         model = URCNN(backbone,
                       num_classes=2,
+                      min_size=args.inputsize,
+                      max_size=args.inputsize,
                       rpn_anchor_generator=anchor_generator,
                       box_roi_pool=roi_pooler).to(device)
-        # model = nn.DataParallel(model, device_ids=[0,1]).to(device)
+        if len(device_ids) > 1:
+            model = nn.DataParallel(model, device_ids=device_ids)
 
         params = [p for p in model.parameters() if p.requires_grad]
         optimizer = torch.optim.SGD(params, lr=args.lr, momentum=args.momentum, weight_decay=args.weight_decay)
@@ -193,6 +197,8 @@ if __name__ == "__main__":
                 for target in targets:
                     target_gpu = {}
                     for k, v in target.items():
+                        if isinstance(v, np.ndarray):
+                            v = torch.from_numpy(v)
                         if k == "labels":
                             target_gpu[k] = v.to(device, torch.int64)
                         else:
@@ -226,9 +232,9 @@ if __name__ == "__main__":
                 m_m.update(time.time() - S)
 
                 S = time.time()
+                optimizer.zero_grad()
                 total_loss.backward()
                 optimizer.step()
-                optimizer.zero_grad()
                 b_m.update(time.time() - S)
 
                 if num_iters % args.print_freq == 0:

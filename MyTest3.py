@@ -13,9 +13,9 @@ from torchvision.models.detection import FasterRCNN, MaskRCNN
 from torchvision.models.detection.rpn import AnchorGenerator
 from torchvision.ops import misc
 import numpy as np
-from U_RCNN_pytorch import Meter
-import U_RCNN_pytorch as urp
-from U_RCNN_pytorch.datasets.voc_dataset import BatchCollator
+from src import Meter
+import src as urp
+from src.datasets.voc_dataset import BatchCollator
 
 
 def K_FOLD(PATH):

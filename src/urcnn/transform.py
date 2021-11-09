@@ -6,11 +6,13 @@ import torchvision
 from torch.jit.annotations import List, Tuple, Dict, Optional
 
 from torchvision.ops import misc as misc_nn_ops
-from .image_list import ImageList
-from torchvision.models.detection.roi_heads import paste_masks_in_image
+
+# from .image_list import ImageList
+# from .roi_heads import paste_masks_in_image
+from src.urcnn.image_list import ImageList
 
 
-class Transformer(nn.Module):
+class GeneralizedRCNNTransform(nn.Module):
     """
     Performs input / target transformation before feeding the data to a GeneralizedRCNN
     model.
@@ -23,7 +25,7 @@ class Transformer(nn.Module):
     """
 
     def __init__(self, min_size, max_size, image_mean, image_std):
-        super(Transformer, self).__init__()
+        super(GeneralizedRCNNTransform, self).__init__()
         if not isinstance(min_size, (list, tuple)):
             min_size = (min_size,)
         self.min_size = min_size
@@ -32,12 +34,8 @@ class Transformer(nn.Module):
         self.image_std = image_std
 
     def forward(self, images, targets=None):
-        # type: # (List[Tensor], Optional[List[Dict[str, Tensor]]])
+        # type: (List[Tensor], Optional[List[Dict[str, Tensor]]])
         images = [img for img in images]
-        image_id = []
-        boxes = []
-        labels = []
-        masks = []
         for i in range(len(images)):
             image = images[i]
             target_index = targets[i] if targets is not None else None
@@ -49,14 +47,7 @@ class Transformer(nn.Module):
             image, target_index = self.resize(image, target_index)
             images[i] = image
             if targets is not None and target_index is not None:
-                image_id.append(target_index['image_id'])
-                boxes.append(target_index['boxes'])
-                labels.append(target_index['labels'])
-                masks.append(target_index['masks'])
-            rt = {"image_id": torch.stack(image_id, dim=0),
-                  "boxes": torch.stack(boxes, dim=0),
-                  "labels": torch.stack(labels, dim=0),
-                  "masks": torch.stack(masks, dim=0)}
+                targets[i] = target_index
 
         image_sizes = [img.shape[-2:] for img in images]
         images = self.batch_images(images)
@@ -66,7 +57,7 @@ class Transformer(nn.Module):
             image_sizes_list.append((image_size[0], image_size[1]))
 
         image_list = ImageList(images, image_sizes_list)
-        return image_list, rt
+        return image_list, targets
 
     def normalize(self, image):
         dtype, device = image.dtype, image.device
@@ -75,7 +66,7 @@ class Transformer(nn.Module):
         return (image - mean[:, None, None]) / std[:, None, None]
 
     def torch_choice(self, l):
-        # type: # (List[int])
+        # type: (List[int])
         """
         Implements `random.choice` via torch ops so it can be compiled with
         TorchScript. Remove if https://github.com/pytorch/pytorch/issues/25803
@@ -85,7 +76,7 @@ class Transformer(nn.Module):
         return l[index]
 
     def resize(self, image, target):
-        # type: # (Tensor, Optional[Dict[str, Tensor]])
+        # type: (Tensor, Optional[Dict[str, Tensor]])
         h, w = image.shape[-2:]
         im_shape = torch.tensor(image.shape[-2:])
         min_size = float(torch.min(im_shape))
@@ -113,13 +104,14 @@ class Transformer(nn.Module):
             mask = target["masks"]
             mask = misc_nn_ops.interpolate(mask[None].float(), scale_factor=scale_factor)[0].byte()
             target["masks"] = mask
+
         return image, target
 
     # _onnx_batch_images() is an implementation of
     # batch_images() that is supported by ONNX tracing.
     @torch.jit.unused
     def _onnx_batch_images(self, images, size_divisible=32):
-        # type: # (List[Tensor], int) -> Tensor
+        # type: (List[Tensor], int) -> Tensor
         max_size = []
         for i in range(images[0].dim()):
             max_size_i = torch.max(torch.stack([img.shape[i] for img in images]).to(torch.float32)).to(torch.int64)
@@ -141,7 +133,7 @@ class Transformer(nn.Module):
         return torch.stack(padded_imgs)
 
     def max_by_axis(self, the_list):
-        # type: # (List[List[int]]) -> List[int]
+        # type: (List[List[int]]) -> List[int]
         maxes = the_list[0]
         for sublist in the_list[1:]:
             for index, item in enumerate(sublist):
@@ -149,7 +141,7 @@ class Transformer(nn.Module):
         return maxes
 
     def batch_images(self, images, size_divisible=32):
-        # type: # (List[Tensor], int)
+        # type: (List[Tensor], int)
         if torchvision._is_tracing():
             # batch_images() does not export well to ONNX
             # call _onnx_batch_images() instead
@@ -168,19 +160,23 @@ class Transformer(nn.Module):
 
         return batched_imgs
 
-    # def postprocess(self, result, image_shapes, original_image_sizes):
-    #     # type: # (List[Dict[str, Tensor]], List[Tuple[int, int]], List[Tuple[int, int]])
-    #     if self.training:
-    #         return result
-    #     for i, (pred, im_s, o_im_s) in enumerate(zip(result, image_shapes, original_image_sizes)):
-    #         boxes = pred["boxes"]
-    #         boxes = resize_boxes(boxes, im_s, o_im_s)
-    #         result[i]["boxes"] = boxes
-    #         if "masks" in pred:
-    #             masks = pred["masks"]
-    #             masks = paste_masks_in_image(masks, boxes, o_im_s)
-    #             result[i]["masks"] = masks
-    #     return result
+    def postprocess(self, result, image_shapes, original_image_sizes):
+        # type: (List[Dict[str, Tensor]], List[Tuple[int, int]], List[Tuple[int, int]])
+        if self.training:
+            return result
+        for i, (pred, im_s, o_im_s) in enumerate(zip(result, image_shapes, original_image_sizes)):
+            boxes = pred["boxes"]
+            boxes = resize_boxes(boxes, im_s, o_im_s)
+            result[i]["boxes"] = boxes
+            # if "masks" in pred:
+            #     masks = pred["masks"]
+            #     masks = paste_masks_in_image(masks, boxes, o_im_s)
+            #     result[i]["masks"] = masks
+            # if "keypoints" in pred:
+            #     keypoints = pred["keypoints"]
+            #     keypoints = resize_keypoints(keypoints, im_s, o_im_s)
+            #     result[i]["keypoints"] = keypoints
+        return result
 
     def __repr__(self):
         format_string = self.__class__.__name__ + '('
@@ -193,7 +189,7 @@ class Transformer(nn.Module):
 
 
 def resize_boxes(boxes, original_size, new_size):
-    # type: # (Tensor, List[int], List[int])
+    # type: (Tensor, List[int], List[int])
     ratios = [
         torch.tensor(s, dtype=torch.float32, device=boxes.device) /
         torch.tensor(s_orig, dtype=torch.float32, device=boxes.device)
@@ -207,3 +203,10 @@ def resize_boxes(boxes, original_size, new_size):
     ymin = ymin * ratio_height
     ymax = ymax * ratio_height
     return torch.stack((xmin, ymin, xmax, ymax), dim=1)
+
+
+if __name__ == "__main__":
+    ts = GeneralizedRCNNTransform(min_size=512, max_size=512,
+                                  image_mean=[0.485, 0.456, 0.406], image_std=[0.229, 0.224, 0.225])
+    images = torch.rand((2, 3, 512, 512))
+    out = ts(images)
