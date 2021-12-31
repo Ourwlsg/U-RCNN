@@ -163,7 +163,10 @@ class FasterRCNN(GeneralizedRCNN):
                 "backbone should contain an attribute out_channels "
                 "specifying the number of output channels (assumed to be the "
                 "same for all the levels)")
-
+        transform = GeneralizedRCNNTransform(min_size, max_size, image_mean, image_std)
+        if box_roi_pool is None or rpn_anchor_generator is None:
+            super(FasterRCNN, self).__init__(backbone, None, None, transform)
+            return
         assert isinstance(rpn_anchor_generator, (AnchorGenerator, type(None)))
         assert isinstance(box_roi_pool, (MultiScaleRoIAlign, type(None)))
 
@@ -228,7 +231,6 @@ class FasterRCNN(GeneralizedRCNN):
             image_mean = [0.485, 0.456, 0.406]
         if image_std is None:
             image_std = [0.229, 0.224, 0.225]
-        transform = GeneralizedRCNNTransform(min_size, max_size, image_mean, image_std)
 
         super(FasterRCNN, self).__init__(backbone, rpn, roi_heads, transform)
 

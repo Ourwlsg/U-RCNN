@@ -1,0 +1,83 @@
+experiment: "13_OD_SS_e100_0.001_adamw_FeatureMap32_wheat_bs_6_resnet34_768"
+use_cuda: True
+is_eval: True
+is_SaveVis: True
+gpus: "0"
+data_dir: "/home/zhucc/U-RCNN/data/wheat"
+vis_dir: "/home/zhucc/U-RCNN/runs/vis"
+load_dir: "/home/zhucc/U-RCNN/runs/checkpoints/13_OD_SS_e100_0.001_adamw_FeatureMap32_wheat_bs_6_resnet34_768"
+load_name: "/home/zhucc/U-RCNN/runs/checkpoints/2_OD_SS_e300_0.001_adamw_FeatureMap32/fold-0/CP_epoch300.pth"
+
+K_FOLD: 5
+FOLD:
+  - 1
+  - 2
+  - 3
+  - 4
+num_classes: 2
+class_names:
+  - "__background__"
+  - "stomata"
+
+seed: 2021
+height: 768
+width: 768
+train_score_thre: 0.0
+vis_stomata_thre: 0.5
+vis_cell_thre: 0.5
+
+
+# wheat 512
+#anchorsizes:
+#  - 25
+#  - 33
+#  - 45
+
+# wheat 768
+anchorsizes:
+  - 35
+  - 50
+  - 65
+aspect_ratios:
+  - 0.5
+  - 1.0
+  - 2.0
+
+#norm_mean:
+#  - 0.5812904
+#  - 0.5812904
+#  - 0.5812904
+#norm_std:
+#  - 0.25828794
+#  - 0.25828794
+#  - 0.25828794
+
+
+# wheat gray
+# norm_mean = [0.46152964]
+# norm_std = [0.10963361]
+# RGB
+#norm_mean:
+#  - 0.4976264
+#  - 0.45133978
+#  - 0.3993562
+#norm_std:
+#  - 0.11552592
+#  - 0.10886826
+#  - 0.10727626
+#
+norm_mean:
+  - 0.51288545
+  - 0.46381885
+  - 0.40980884
+norm_std:
+  - 0.10770562
+  - 0.10315693
+  - 0.10328569
+
+
+rpn_pre_nms_top_n_train: 2000
+rpn_post_nms_top_n_train: 1000
+
+rpn_pre_nms_top_n_test: 2000
+rpn_post_nms_top_n_test: 1000

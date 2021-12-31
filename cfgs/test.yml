@@ -1,0 +1,37 @@
+with_mask: true
+use_cuda: true
+gpus: "0"
+dataset: "voc"
+data_dir: "/home/zhucc/U-RCNN/data"
+checkpoint_dir: "/home/zhucc/U-RCNN/runs/checkpoints"
+output_dir: "/home/zhucc/U-RCNN/runs/output"
+cache_dir: "/home/zhucc/U-RCNN/data/cache"
+
+K_FOLD: 5
+num_classes: 2
+class_names:
+  - "__background__"
+  - "stomata"
+
+ckpt_path: "/home/zhucc/U-RCNN/runs/checkpoints/smoothL1sum_100epoch/fold-4/CP_epoch100.pth"
+results: ""
+
+
+seed: 2021
+lr_steps: [22, 26]
+lr: 0.001
+optim: "adam"
+
+load: false
+load_name: "/home/zhucc/U-RCNN/pretrained/resnet50-19c8e357.pth"
+
+height: 512
+width: 512
+batch_size: 1
+start_epoch: 1
+epochs: 50
+iters: -1 # help="max iters per epoch, -1 denotes auto"
+print_freq: 1 # help="frequency of printing losses"
+checkpoint_epoch_interval: 1
+train_score_thre: 0.0
+vis_score_thre: 0.5

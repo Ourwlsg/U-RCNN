@@ -1,7 +1,6 @@
 import os
 import json
 import xml.etree.ElementTree as ET
-from PIL import Image
 from collections import defaultdict
 import cv2
 import torch
@@ -13,17 +12,8 @@ from torchvision.transforms import transforms
 from torch.utils.data.dataloader import default_collate
 from .generalized_dataset import GeneralizedDataset
 
-# VOC_CLASSES = (
-#     "aeroplane", "bicycle", "bird", "boat", "bottle",
-#     "bus", "car", "cat", "chair", "cow", "diningtable",
-#     "dog", "horse", "motorbike", "person", "pottedplant",
-#     "sheep", "sofa", "train", "tvmonitor"
-# )
 
 VOC_CLASSES = ("__background__", "stomata",)
-
-
-# return image, target(image_id=img_id, boxes=boxes, labels=labels, masks=mask)
 
 
 # image=image, image_id=img_id, boxes=boxes, labels=labels, masks=mask
@@ -32,7 +22,6 @@ class BatchCollator:
         self.is_train = train
 
     def __call__(self, batch):
-        # images = [torch.from_numpy(b['image']) for b in batch]
         images = [b['image'] for b in batch]
 
         targets = [b['target'] for b in batch]
@@ -40,38 +29,26 @@ class BatchCollator:
         labels = [target['labels'] for target in targets]
 
         max_num_bboxes = max(annot.shape[0] for annot in bboxes)
-        if max_num_bboxes > 0:
-            for idx, bbox in enumerate(bboxes):
-                bbox_padded = torch.ones(max_num_bboxes, 4) * -1
-                if bbox.shape[0] == 0:
-                    targets[idx]['boxes'] = bbox_padded
+        if max_num_bboxes == 0:
+            max_num_bboxes = 1
+        for idx, bbox in enumerate(bboxes):
+            bbox_padded = torch.ones(max_num_bboxes, 4) * -1
+            if bbox.shape[0] == 0:
+                targets[idx]['boxes'] = bbox_padded
 
-                if bbox.shape[0] > 0:
-                    bbox_padded[:bbox.shape[0], 0:4] = torch.from_numpy(bbox)
-                    targets[idx]['boxes'] = bbox_padded
+            if bbox.shape[0] > 0:
+                bbox_padded[:bbox.shape[0], 0:4] = torch.from_numpy(bbox)
+                targets[idx]['boxes'] = bbox_padded
 
-            for idx, label in enumerate(labels):
-                label_padded = torch.ones(max_num_bboxes) * -1
-                if label.shape[0] == 0:
-                    targets[idx]['labels'] = label_padded
-                if label.shape[0] > 0:
-                    label_padded[:len(label)] = torch.from_numpy(label)
-                    targets[idx]['labels'] = label_padded
-        else:
-            for idx, bbox in enumerate(bboxes):
-                if bbox.shape[0] > 0:
-                    bbox_padded = torch.ones((len(bboxes), 1, 4)) * -1
-                    targets[idx]['boxes'] = bbox_padded
-            for idx, label in enumerate(labels):
-                if label.shape[0] > 0:
-                    label_padded = torch.ones((len(labels), 1)) * -1
-                    targets[idx]['labels'] = label_padded
+        for idx, label in enumerate(labels):
+            label_padded = torch.ones(max_num_bboxes) * -1
+            if label.shape[0] == 0:
+                targets[idx]['labels'] = label_padded
+            if label.shape[0] > 0:
+                label_padded[:len(label)] = torch.from_numpy(label)
+                targets[idx]['labels'] = label_padded
 
         images = torch.from_numpy(np.stack(images, axis=0)).float()
-        # images = images.permute(0, 3, 1, 2)
-
-        # targets = default_collate(targets)
-        # targets = torch.from_numpy(np.stack(targets, axis=0))
         return images, targets
 
         # images, image_ids, boxess, labelss, maskss = zip(*batch)
@@ -100,9 +77,10 @@ class BatchCollator:
         #         pad_labels_list.append(
         #             F.pad(labelss[i], pad=(0, max_num - labelss[i].shape[0]), value=-1))
         #
-        #         boxes = default_collate(pad_boxes_list)
-        #         labels = default_collate(pad_labels_list)
-        #         masks = default_collate(maskss)
+        # boxes = default_collate(pad_boxes_list)
+        # labels = default_collate(pad_labels_list)
+        # masks = default_collate(maskss)
+        # masks = default_collate(maskss)
         #
         # targets = dict(image_ids=img_ids, boxes=boxes, labels=labels, masks=masks)
 
@@ -115,24 +93,7 @@ class VOCDataset(GeneralizedDataset):
         self.data_dir = data_dir
         self.train = train
         self.transform = transform
-
-        # # instances segmentation task
-        # id_file = os.path.join(data_dir, "ImageSets/Segmentations/{}.txt".format(split))
-        # self.ids = [id_.strip() for id_ in open(id_file)]
-        # self.id_compare_fn = lambda x: int(x.replace("_", ""))
-        #
-        # self.ann_file = os.path.join(data_dir, "Annotations/instances_{}.json".format(split))
-        # self._coco = None
-        #
         self.classes = VOC_CLASSES
-        # # resutls' labels convert to annotation labels
-        # self.ann_labels = {self.classes.index(n): i for i, n in enumerate(self.classes)}
-        #
-        # checked_id_file = os.path.join(os.path.dirname(id_file), "checked_{}.txt".format(split))
-        # if train:
-        #     if not os.path.exists(checked_id_file):
-        #         self.make_aspect_ratios()
-        #     self.check_dataset(checked_id_file)
 
     def make_aspect_ratios(self):
         self._aspect_ratios = []
@@ -145,13 +106,12 @@ class VOCDataset(GeneralizedDataset):
             self._aspect_ratios.append(ar)
 
     def get_image_target(self, img_id):
-        image = cv2.imread(os.path.join(self.data_dir, "JPEGImages/{}.jpg".format(img_id.strip())), cv2.IMREAD_COLOR)
+        img_id = img_id.strip()
+        image = cv2.imread(os.path.join(self.data_dir, "JPEGImages/{}.jpg".format(img_id)), cv2.IMREAD_COLOR)
         img_RGB = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
-        mask = cv2.imread(os.path.join(self.data_dir, "Masks/{}.jpg".format(img_id.strip())), cv2.IMREAD_GRAYSCALE)
-
-        anno = ET.parse(os.path.join(self.data_dir, "Annotations", "{}.xml".format(img_id.strip())))
-
+        mask = cv2.imread(os.path.join(self.data_dir, "Masks/{}.jpg".format(img_id)), cv2.IMREAD_GRAYSCALE)
+        anno = ET.parse(os.path.join(self.data_dir, "Annotations", "{}.xml".format(img_id)))
         bboxes = []
         labels = []
         for obj in anno.findall("object"):
@@ -159,6 +119,7 @@ class VOCDataset(GeneralizedDataset):
             bbox = [int(bndbox.find(tag).text) for tag in ["xmin", "ymin", "xmax", "ymax"]]
             name = obj.find("name").text
             label = self.classes.index(name)
+
             bboxes.append(bbox)
             labels.append(label)
 
@@ -170,18 +131,15 @@ class VOCDataset(GeneralizedDataset):
             labels = augmented["labels"]
 
         image = transforms.ToTensor()(image)
-        img_id = torch.tensor([self.ids.index(img_id)])
+        img_id = img_id.strip()
 
         if mask.max() > 1:
             mask = mask / 255.0
         mask[mask >= 0.6] = 1
         mask[mask < 0.6] = 0
-        mask = transforms.ToTensor()(mask)
-        mask = mask.float()
+        mask = transforms.ToTensor()(mask).float()
 
-        bboxes = torch.tensor(bboxes, dtype=torch.float32)
         bboxes = np.asarray(bboxes)
-
         labels = np.asarray(labels)
 
         target = dict(image_id=img_id, boxes=bboxes, labels=labels, masks=mask)

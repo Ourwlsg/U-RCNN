@@ -1,20 +1,115 @@
-use_cuda: true
-gpu: "1"
-dataset: "voc"
-data_dir: "/home/zhucc/stomata_index/U-RCNN/data"
-K_FOLD: 5
+experiment: "16_TEST_SS_e100_0.001_adamw_FeatureMap32_wheat_bs_6_resnet34_768"
+FOLD:
+  - 0
+  - 1
+  - 2
+  - 3
+  - 4
 
-ckpt_path: ""
-results: ""
+SS: True
+OD: True
+use_lossWeigth: False
+weight_num: 2
+
+backbone: "resnet34"
+
+use_cuda: True
+gpus: "0"
+dataset: "voc"
+data_dir: "/home/zhucc/U-RCNN/data/wheat"
+cache_dir: "/home/zhucc/U-RCNN/data/wheat/cache"
+
+log_dir: "/home/zhucc/U-RCNN/runs/logs"
+board_dir: "/home/zhucc/U-RCNN/runs/tensorboard"
+output_dir: "/home/zhucc/U-RCNN/runs/output"
+checkpoint_dir: "/home/zhucc/U-RCNN/runs/checkpoints"
+
+load: False
+load_name: "/home/zhucc/U-RCNN/runs/checkpoints/2_OD_SS_e300_0.001_adamw_FeatureMap32/fold-2/CP_epoch25.pth"
+
+K_FOLD: 5
+num_classes: 2
+class_names:
+  - "__background__"
+  - "stomata"
 
 seed: 2021
-lr_steps: [22, 26]
-lr: 0.0005
-momentum: 0.9
-weight_decay: 0.0001
+lr: 0.001
+optim: "adamw"
 
-inputsize: 64
-batch_size: 2
-epochs: 2
+height: 768
+width: 768
+batch_size: 6
+start_epoch: 1
+epochs: 100
 iters: -1 # help="max iters per epoch, -1 denotes auto"
-print_freq: 1 # help="frequency of printing losses"
+print_freq: 1
+save_freq: 1
+train_score_thre: 0.0
+vis_score_thre: 0.5
+
+rpn_pre_nms_top_n_train: 2000
+rpn_post_nms_top_n_train: 1000
+
+rpn_pre_nms_top_n_test: 2000
+rpn_post_nms_top_n_test: 1000
+
+# cuticle
+#norm_mean:
+#  - 0.5812904
+#  - 0.5812904
+#  - 0.5812904
+#norm_std:
+#  - 0.25828794
+#  - 0.25828794
+#  - 0.25828794
+# wheat gray
+# norm_mean = [0.46152964]
+# norm_std = [0.10963361]
+
+
+# wheatRGB 512
+#norm_mean:
+#  - 0.4976264
+#  - 0.45133978
+#  - 0.3993562
+#norm_std:
+#  - 0.11552592
+#  - 0.10886826
+#  - 0.10727626
+
+# wheatRGB 768
+norm_mean:
+  - 0.51288545
+  - 0.46381885
+  - 0.40980884
+norm_std:
+  - 0.10770562
+  - 0.10315693
+  - 0.10328569
+
+# wheat 512
+#anchorsizes:
+#  - 25
+#  - 33
+#  - 45
+
+# wheat 768
+anchorsizes:
+  - 35
+  - 50
+  - 65
+
+
+#anchorsizes:
+#  - 40
+#  - 60
+#  - 80
+
+
+# cuticle 512
+aspect_ratios:
+  - 0.5
+  - 1.0
+  - 2.0
+

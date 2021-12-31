@@ -33,8 +33,28 @@ class GeneralizedRCNNTransform(nn.Module):
         self.image_mean = image_mean
         self.image_std = image_std
 
-    def forward(self, images, targets=None):
-        # type: (List[Tensor], Optional[List[Dict[str, Tensor]]])
+    def forward(self, images, targets=None, SS=True, OD = True):
+        # type: # (List[Tensor], Optional[List[Dict[str, Tensor]]])
+        # only SS
+        if not OD and SS:
+            images = [img for img in images]
+            for i in range(len(images)):
+                image = images[i]
+                image = self.normalize(image)
+                if image.dim() != 3:
+                    raise ValueError("images is expected to be a list of 3d tensors "
+                                     "of shape [C, H, W], got {}".format(image.shape))
+                images[i] = image
+            image_sizes = [img.shape[-2:] for img in images]
+            images = self.batch_images(images)
+            image_sizes_list = torch.jit.annotate(List[Tuple[int, int]], [])
+            for image_size in image_sizes:
+                assert len(image_size) == 2
+                image_sizes_list.append((image_size[0], image_size[1]))
+
+            image_list = ImageList(images, image_sizes_list)
+            return image_list, targets
+
         images = [img for img in images]
         for i in range(len(images)):
             image = images[i]
@@ -89,9 +109,7 @@ class GeneralizedRCNNTransform(nn.Module):
         scale_factor = size / min_size
         if max_size * scale_factor > self.max_size:
             scale_factor = self.max_size / max_size
-        image = torch.nn.functional.interpolate(
-            image[None], scale_factor=scale_factor, mode='bilinear',
-            align_corners=False)[0]
+        image = torch.nn.functional.interpolate(image[None], scale_factor=scale_factor, mode='bilinear', align_corners=False)[0]
 
         if target is None:
             return image, target
@@ -210,3 +228,4 @@ if __name__ == "__main__":
                                   image_mean=[0.485, 0.456, 0.406], image_std=[0.229, 0.224, 0.225])
     images = torch.rand((2, 3, 512, 512))
     out = ts(images)
+

@@ -1,9 +1,11 @@
 import math
-
+import os
 import torch
-from torch.jit.annotations import List, Tuple
+import random
+import numpy as np
 from torch import Tensor
-import torchvision
+from torch.jit.annotations import List, Tuple
+
 
 
 # TODO: https://github.com/pytorch/pytorch/issues/26727
@@ -305,7 +307,7 @@ class Matcher(object):
         # Assign candidate matches with low quality to negative (unassigned) values
         below_low_threshold = matched_vals < self.low_threshold
         between_thresholds = (matched_vals >= self.low_threshold) & (
-            matched_vals < self.high_threshold
+                matched_vals < self.high_threshold
         )
         matches[below_low_threshold] = torch.tensor(self.BELOW_LOW_THRESHOLD)
         matches[between_thresholds] = torch.tensor(self.BETWEEN_THRESHOLDS)

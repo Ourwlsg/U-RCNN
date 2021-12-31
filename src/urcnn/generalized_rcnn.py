@@ -30,21 +30,20 @@ class GeneralizedRCNN(nn.Module):
         self.backbone = backbone
         self.rpn = rpn
         self.roi_heads = roi_heads
-        # used only on torchscript mode
-        self._has_warned = False
+        self.with_prepools = False
 
     @torch.jit.unused
-    def eager_outputs(self, losses, detections, masks_preds):
+    def eager_outputs(self, losses,  weighted_loss, weights, detections, masks_preds):
         # type: # (Dict[str, Tensor], List[Dict[str, Tensor]]) -> Tuple[Dict[str, Tensor], List[Dict[str, Tensor]]]
         if self.training:
-            return losses, masks_preds
-
+            return losses, weighted_loss, weights
         return detections, masks_preds
 
-    def forward(self, images, targets=None):
-        # type: (List[Tensor], Optional[List[Dict[str, Tensor]]])
+    def forward(self, images, targets=None, OD=True, SS=True):
         """
         Arguments:
+            SS: with semantic segmentation?
+            OD: with objiect detection?
             images (list[Tensor]): images to be processed
             targets (list[Dict[Tensor]]): ground-truth boxes present in the image (optional)
 
@@ -55,6 +54,8 @@ class GeneralizedRCNN(nn.Module):
                 like `scores`, `labels` and `mask` (for Mask R-CNN models).
 
         """
+        if not (SS or OD):
+            raise RuntimeError("OD and SS cannot be false at the same time")
         if self.training and targets is None:
             raise ValueError("In training mode, targets should be passed")
         original_image_sizes = torch.jit.annotate(List[Tuple[int, int]], [])
@@ -62,27 +63,29 @@ class GeneralizedRCNN(nn.Module):
             val = img.shape[-2:]
             assert len(val) == 2
             original_image_sizes.append((val[0], val[1]))
+        images, targets = self.transform(images, targets, SS, OD)
 
-        images, targets = self.transform(images, targets)
-
-        masks_preds, features = self.backbone.forward(images.tensors, with_backbone_feature_map=True)
-        if isinstance(features, torch.Tensor):
-            features = OrderedDict([('0', features)])
-        proposals, proposal_losses = self.rpn(images, features, targets)
-        detections, detector_losses = self.roi_heads(features, proposals, images.image_sizes, targets)
-
-        detections = self.transform.postprocess(detections, images.image_sizes, original_image_sizes)
+        if SS:
+            self.with_prepools = True
 
         losses = {}
+        weighted_loss = 0
+        weights =None
+        masks_preds = None
+        detections = None
+        features, bottle, prepools = self.backbone(images.tensors, with_prepools=self.with_prepools)
+        if SS:
+            masks_preds, mask_losses = self.mask_heads(bottle, prepools, targets)
+            losses.update(mask_losses)
+        if OD:
+            if isinstance(features, torch.Tensor):
+                features = OrderedDict([('0', features)])
+            proposals, proposal_losses = self.rpn(images, features, targets)
+            detections, detector_losses = self.roi_heads(features, proposals, images.image_sizes, targets)
+            detections = self.transform.postprocess(detections, images.image_sizes, original_image_sizes)
+            losses.update(detector_losses)
+            losses.update(proposal_losses)
+        if self.loss_handler is not None and self.training:
+            weighted_loss, weights = self.loss_handler(losses)
 
-        losses.update(detector_losses)
-        losses.update(proposal_losses)
-
-
-        if torch.jit.is_scripting():
-            if not self._has_warned:
-                warnings.warn("RCNN always returns a (Losses, Detections) tuple in scripting")
-                self._has_warned = True
-            return (losses, detections)
-        else:
-            return self.eager_outputs(losses, detections, masks_preds)
+        return self.eager_outputs(losses, weighted_loss, weights, detections, masks_preds)

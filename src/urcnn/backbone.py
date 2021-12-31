@@ -2,34 +2,17 @@
 # -*- coding: UTF-8 -*-
 """
 =================================================
-@Project -> File   ：kaggle -> 12
 @IDE    ：PyCharm
 @Author ：zhucc
 @Date   ：2020/5/13 21:17
 @Desc   ：
 ==================================================
 """
-import torch.nn as nn
 from torchvision.ops import misc
 from torchvision.models import resnet
 from torchvision.models._utils import IntermediateLayerGetter
 from torchvision.ops.feature_pyramid_network import FeaturePyramidNetwork, LastLevelMaxPool
 from torchvision.ops import misc as misc_nn_ops
-
-
-
-
-#!/usr/bin/env python
-# -*- coding: UTF-8 -*-
-"""
-=================================================
-@Project -> File   ：kaggle -> 12
-@IDE    ：PyCharm
-@Author ：zhucc
-@Date   ：2020/5/13 21:17
-@Desc   ：
-==================================================
-"""
 import torch
 import torch.nn as nn
 import torchvision
@@ -158,15 +141,20 @@ class UNetWithResnet50Encoder(nn.Module):
         for i, block in enumerate(self.up_blocks, 1):
             key = f"layer_{UNetWithResnet50Encoder.DEPTH - 1 - i}"
             x = block(x, pre_pools[key])
-        output_feature_map = x
+        # output_feature_map = x
         x = self.out(x)
         del pre_pools
-        if with_output_feature_map:
-            return x, output_feature_map,
-        elif with_backbone_feature_map:
+        if with_backbone_feature_map:
             return x, backnone_feature_map
         else:
             return x
+
+        # if with_output_feature_map:
+        #     return x, output_feature_map,
+        # elif with_backbone_feature_map:
+        #     return x, backnone_feature_map
+        # else:
+        #     return x
 
 
 if __name__ == "__main__":
